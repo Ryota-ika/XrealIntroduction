@@ -3,23 +3,24 @@ using NRKernal;
 using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.UI;
+using UnityEngine.Video;
 using ZXing;
 
 public sealed class QRCodeScanner : MonoBehaviour
 {
     [SerializeField]
     private Text _text;
+    [SerializeField]
+    private VideoPlayer _videoPlayer;
 
     private BarcodeReader _barcodeReader;
     private NRRGBCamTexture _cameraTexture;
-    private GltfLoader _gltfLoader;
 
     private string _scannedText;
 
     private void Start()
     {
         _barcodeReader = new BarcodeReader { AutoRotate = false };
-        _gltfLoader = new();
     }
 
     private void OnDestroy()
@@ -28,12 +29,6 @@ public sealed class QRCodeScanner : MonoBehaviour
         {
             _cameraTexture.Stop();
             _cameraTexture = null;
-        }
-
-        if (_gltfLoader != null)
-        {
-            _gltfLoader.Dispose();
-            _gltfLoader = null;
         }
 
         _barcodeReader = null;
@@ -52,7 +47,7 @@ public sealed class QRCodeScanner : MonoBehaviour
         var result = _barcodeReader.Decode(rawImage, _cameraTexture.Width, _cameraTexture.Height);
         if (result != null)
         {
-            _scannedText = $"{result.Text}";
+            _scannedText = result.Text;
         } else
         {
             if (_scannedText == null)
@@ -81,25 +76,44 @@ public sealed class QRCodeScanner : MonoBehaviour
         _cameraTexture.Pause();
     }
 
-    public void Load()
+    public void PlayVideo()
     {
-        StartCoroutine(LoadProc());
-    }
-
-    public IEnumerator LoadProc()
-    {
-        var request = UnityWebRequest.Get(_scannedText);
-        yield return request.Send();
-        if (request.isNetworkError)
+        if (!string.IsNullOrEmpty(_scannedText))
         {
-            Debug.Log(request.error);
+            Debug.Log($"QR Code URL: {_scannedText}");
+            StartCoroutine(TestWithSampleVideo());
         } else
         {
-            if (request.responseCode == 200)
-            {
-                var results = request.downloadHandler.data;
-                _gltfLoader.Load(results);
-            }
+            Debug.LogError("No QR Code data found.");
         }
     }
+
+    private IEnumerator PlayVideoFromURL(string url)
+    {
+        var request = UnityWebRequest.Head(url);
+        yield return request.SendWebRequest();
+
+        if (request.result == UnityWebRequest.Result.ConnectionError || request.result == UnityWebRequest.Result.ProtocolError)
+        {
+            Debug.LogError($"Failed to load video: {request.error}");
+            yield break;
+        }
+
+        _videoPlayer.url = url;
+        _videoPlayer.Prepare();
+
+        while (!_videoPlayer.isPrepared)
+        {
+            yield return null;
+        }
+
+        _videoPlayer.Play();
+    }
+
+    private IEnumerator TestWithSampleVideo()
+    {
+        string sampleVideoUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"; // ìÆçÏämîFópÇÃìÆâÊURL
+        yield return PlayVideoFromURL(sampleVideoUrl);
+    }
+
 }
